@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>方塊消消樂</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;min-height:100vh;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif;background:linear-gradient(145deg,#f8f3ff,#eaf7ff);display:flex;align-items:center;justify-content:center;color:#303044}
+.app{width:min(94vw,460px);padding:22px 18px 26px}
+.header{text-align:center;margin-bottom:16px}
+h1{margin:0;font-size:32px;letter-spacing:3px}
+.sub{margin-top:5px;color:#888;font-size:13px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.card{background:rgba(255,255,255,.78);border:1px solid rgba(255,255,255,.9);border-radius:18px;padding:10px;text-align:center;box-shadow:0 8px 24px rgba(90,80,130,.08)}
+.card b{display:block;font-size:22px;margin-top:2px}
+.card span{font-size:12px;color:#999}
+.board{display:grid;grid-template-columns:repeat(8,1fr);gap:5px;background:#dcd8e8;padding:7px;border-radius:20px;box-shadow:0 14px 35px rgba(80,70,120,.15);touch-action:none}
+.cell{aspect-ratio:1;border:0;border-radius:9px;cursor:pointer;transition:transform .12s,filter .12s,opacity .18s;box-shadow:inset 0 2px 2px rgba(255,255,255,.35),0 2px 3px rgba(0,0,0,.08)}
+.cell:hover{filter:brightness(1.05);transform:scale(.96)}
+.cell.empty{background:transparent;box-shadow:none;cursor:default}
+.controls{display:flex;gap:10px;margin-top:15px}
+button.control{flex:1;border:0;border-radius:15px;padding:13px;font-weight:700;font-size:15px;cursor:pointer;background:#fff;color:#444;box-shadow:0 7px 18px rgba(70,60,100,.1)}
+button.control.primary{background:#5d56d9;color:#fff}
+.tip{text-align:center;color:#888;font-size:12px;margin-top:12px}
+#message{min-height:20px;text-align:center;margin-top:8px;color:#655dd4;font-weight:700}
+@keyframes pop{0%{transform:scale(1)}45%{transform:scale(1.15)}100%{transform:scale(0);opacity:0}}
+.pop{animation:pop .22s ease forwards}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <h1>方塊消消樂</h1>
+    <div class="sub">點擊相鄰的同色方塊，消除 2 個以上即可得分</div>
+  </div>
+  <div class="stats">
+    <div class="card"><span>分數</span><b id="score">0</b></div>
+    <div class="card"><span>最高分</span><b id="best">0</b></div>
+  </div>
+  <div id="board" class="board"></div>
+  <div id="message"></div>
+  <div class="controls">
+    <button class="control primary" onclick="newGame()">重新開始</button>
+    <button class="control" onclick="shuffle()">洗牌</button>
+  </div>
+  <div class="tip">消除越多顆，一次得到的分數越高 ✨</div>
+</div>
+
+<script>
+const ROWS=10,COLS=8;
+const COLORS=["#ff7894","#62b6ff","#ffd45c","#74d9a0","#a88cff"];
+let grid=[],score=0,best=Number(localStorage.getItem("blockBest")||0);
+
+const board=document.getElementById("board");
+const scoreEl=document.getElementById("score");
+const bestEl=document.getElementById("best");
+const message=document.getElementById("message");
+bestEl.textContent=best;
+
+function newGame(){
+  score=0; message.textContent="";
+  grid=Array.from({length:ROWS},()=>Array.from({length:COLS},()=>Math.floor(Math.random()*COLORS.length)));
+  render();
+}
+function render(){
+  scoreEl.textContent=score; bestEl.textContent=best;
+  board.innerHTML="";
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    const el=document.createElement("button");
+    el.className="cell"+(grid[r][c]<0?" empty":"");
+    if(grid[r][c]>=0) el.style.background=COLORS[grid[r][c]];
+    el.onclick=()=>tap(r,c);
+    board.appendChild(el);
+  }
+}
+function neighbors(r,c){
+  const out=[],dirs=[[1,0],[-1,0],[0,1],[0,-1]],color=grid[r][c];
+  if(color<0)return out;
+  const q=[[r,c]],seen=new Set([r+","+c]);
+  while(q.length){
+    const [x,y]=q.shift();out.push([x,y]);
+    for(const [dx,dy] of dirs){
+      const nx=x+dx,ny=y+dy,key=nx+","+ny;
+      if(nx>=0&&nx<ROWS&&ny>=0&&ny<COLS&&!seen.has(key)&&grid[nx][ny]===color){
+        seen.add(key);q.push([nx,ny]);
+      }
+    }
+  }
+  return out;
+}
+function tap(r,c){
+  if(grid[r][c]<0)return;
+  const group=neighbors(r,c);
+  if(group.length<2){
+    message.textContent="至少要連在一起 2 顆才能消除喔！";
+    setTimeout(()=>message.textContent="",900);
+    return;
+  }
+  group.forEach(([x,y])=>grid[x][y]=-1);
+  const gained=group.length*group.length*10;
+  score+=gained;
+  if(score>best){best=score;localStorage.setItem("blockBest",best)}
+  message.textContent=`+${gained} 分！`;
+  collapse();
+  render();
+  setTimeout(()=>{
+    if(!hasMoves()){
+      message.textContent="沒有可消除的方塊了！";
+    } else message.textContent="";
+  },350);
+}
+function collapse(){
+  for(let c=0;c<COLS;c++){
+    let vals=[];
+    for(let r=ROWS-1;r>=0;r--) if(grid[r][c]>=0) vals.push(grid[r][c]);
+    for(let r=ROWS-1;r>=0;r--) grid[r][c]=vals[ROWS-1-r]??-1;
+  }
+  let write=0;
+  for(let c=0;c<COLS;c++) if(grid[ROWS-1][c]>=0){
+    if(c!==write) for(let r=0;r<ROWS;r++){grid[r][write]=grid[r][c];grid[r][c]=-1}
+    write++;
+  }
+}
+function hasMoves(){
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+    if(grid[r][c]>=0){
+      if(r+1<ROWS&&grid[r+1][c]===grid[r][c])return true;
+      if(c+1<COLS&&grid[r][c+1]===grid[r][c])return true;
+    }
+  }
+  return false;
+}
+function shuffle(){
+  const vals=grid.flat().filter(x=>x>=0);
+  for(let i=vals.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[vals[i],vals[j]]=[vals[j],vals[i]]}
+  let k=0;
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)grid[r][c]=k<vals.length?vals[k++]:-1;
+  if(!hasMoves()&&vals.length>1) return shuffle();
+  message.textContent="已洗牌！";
+  render();
+  setTimeout(()=>message.textContent="",700);
+}
+newGame();
+</script>
+</body>
+</html>
